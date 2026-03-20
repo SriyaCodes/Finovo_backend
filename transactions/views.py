@@ -112,8 +112,8 @@ class AnalyticsView(APIView):
         user  = request.user
         today = date.today()
         timeframe = request.query_params.get('timeframe', 'month')
-        category_id = request.query_params.get('category_id')
-        payment_method = request.query_params.get('payment_method')
+        category_ids = request.query_params.get('category_id')
+        payment_methods = request.query_params.get('payment_method')
 
         from datetime import timedelta
         import calendar
@@ -170,10 +170,14 @@ class AnalyticsView(APIView):
             date__date__lte=end_date,
         )
 
-        if category_id:
-            month_txns = month_txns.filter(category_id=category_id)
-        if payment_method:
-            month_txns = month_txns.filter(payment_method=payment_method)
+        if category_ids:
+            cat_list = [c.strip() for c in category_ids.split(',') if c.strip()]
+            if cat_list:
+                month_txns = month_txns.filter(category_id__in=cat_list)
+        if payment_methods:
+            pm_list = [p.strip() for p in payment_methods.split(',') if p.strip()]
+            if pm_list:
+                month_txns = month_txns.filter(payment_method__in=pm_list)
 
         # Spent total (expenses only)
         expense_qs = month_txns.filter(category__type=Category.CategoryType.EXPENSE)
@@ -185,8 +189,10 @@ class AnalyticsView(APIView):
             month__gte=start_date.replace(day=1),
             month__lte=end_date
         )
-        if category_id:
-            budget_qs = budget_qs.filter(category_id=category_id)
+        if category_ids:
+            cat_list = [c.strip() for c in category_ids.split(',') if c.strip()]
+            if cat_list:
+                budget_qs = budget_qs.filter(category_id__in=cat_list)
             
         budget_total = budget_qs.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
         budget_on_track = bool(spent_total <= budget_total) if budget_total > 0 else None
@@ -448,12 +454,20 @@ class TransactionListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = Transaction.objects.filter(user=self.request.user).order_by('-date')
-        category_id = self.request.query_params.get('category_id')
+        category_ids = self.request.query_params.get('category_id')
+        payment_methods = self.request.query_params.get('payment_method')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
 
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
+        if category_ids:
+            cat_list = [c.strip() for c in category_ids.split(',') if c.strip()]
+            if cat_list:
+                queryset = queryset.filter(category_id__in=cat_list)
+                
+        if payment_methods:
+            pm_list = [p.strip() for p in payment_methods.split(',') if p.strip()]
+            if pm_list:
+                queryset = queryset.filter(payment_method__in=pm_list)
         if start_date:
             queryset = queryset.filter(date__date__gte=start_date)
         if end_date:

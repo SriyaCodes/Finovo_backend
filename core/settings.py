@@ -162,3 +162,18 @@ SIMPLE_JWT = {
 # Production (Future): Migrate to AWS S3 or similar by updating DEFAULT_FILE_STORAGE
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "profile_photos"
+
+# ---------------------------------------------------------------------------
+# Email / SMTP Configuration
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')  # Set your email adress in .env
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '') # Set your app password in .env
+DEFAULT_FROM_EMAIL = f"Finovo App <{EMAIL_HOST_USER}>"
+
+# Fallback to console backend if credentials are missing
+if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
