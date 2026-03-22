@@ -24,6 +24,7 @@ from .export_utils import (
     parse_csv_import, parse_xlsx_import
 )
 from rest_framework.parsers import MultiPartParser, FormParser
+from core.dynamo_service import DynamoDBService
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,25 +146,31 @@ class AnalyticsView(APIView):
             _, last_day = calendar.monthrange(today.year, today.month)
             end_date = today.replace(day=last_day)
             month_label = "Last 3 Months"
-        elif timeframe == 'custom':
-            c_start = request.query_params.get('start_date')
-            c_end = request.query_params.get('end_date')
-            if c_start and c_end:
-                from datetime import datetime
-                start_date = datetime.strptime(c_start, '%Y-%m-%d').date()
-                end_date = datetime.strptime(c_end, '%Y-%m-%d').date()
-                month_label = f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
-            else:
-                start_date = today - timedelta(days=29)
-                end_date = today
-                month_label = "Custom (30 days)"
         else:
-            # Default to month
+            # Default to current month
             start_date = today.replace(day=1)
             _, last_day = calendar.monthrange(today.year, today.month)
             end_date = today.replace(day=last_day)
             month_label = today.strftime('%B %Y')
 
+        # --- DYNAMODB PROJECTION CHECK (Production Optimization) ---
+        # Skip if filters are applied to ensure RDS provides fresh filtered data
+        has_filters = any([category_ids, payment_methods])
+        if not has_filters:
+            cached_data = DynamoDBService.get_projection(user.id, month_label)
+            if cached_data:
+                # Return the cached data from DynamoDB (convert Decimals back to floats/ints for JSON)
+                def convert_from_decimal(obj):
+                    if isinstance(obj, Decimal):
+                        return float(obj)
+                    if isinstance(obj, dict):
+                        return {k: convert_from_decimal(v) for k, v in obj.items()}
+                    if isinstance(obj, list):
+                        return [convert_from_decimal(i) for i in obj]
+                    return obj
+                return Response(convert_from_decimal(cached_data['data']))
+
+        # --- RDS CALCULATION (Local Fallback or Cache Miss) ---
         month_txns = Transaction.objects.filter(
             user=user,
             date__date__gte=start_date,
@@ -395,7 +402,7 @@ class AnalyticsView(APIView):
                 'remaining':  float(remaining),
             })
 
-        return Response({
+        response_data = {
             'month_label':    month_label,
             'spent_total':    float(spent_total),
             'budget_total':   float(budget_total),
@@ -404,7 +411,13 @@ class AnalyticsView(APIView):
             'top_categories': top_categories,
             'start_date': start_date.strftime('%Y-%m-%d'),
             'end_date': end_date.strftime('%Y-%m-%d'),
-        })
+        }
+
+        # --- PUSH TO DYNAMODB (Background Sync) ---
+        if not has_filters:
+            DynamoDBService.update_projection(user.id, month_label, start_date, end_date, response_data)
+
+        return Response(response_data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
