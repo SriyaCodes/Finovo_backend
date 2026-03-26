@@ -8,13 +8,21 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+
     steps:
-      - name: Pull and deploy
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy with Docker
         run: |
-          cd /home/ssm-user/Finovo_backend
-          git pull origin main
+          cd ~/Finovo_backend
           docker stop finovo-backend || true
           docker rm finovo-backend || true
           docker rmi finovo-backend || true
           docker build -t finovo-backend .
-          docker run -d --name finovo-backend --restart=always --env-file /home/ssm-user/.env -p 8000:8000 finovo-backend
+          docker run -d \
+            --name finovo-backend \
+            --restart=always \
+            --env-file /home/ubuntu/.env \
+            -p 8000:8000 \
+            finovo-backend
